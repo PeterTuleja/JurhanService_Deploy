@@ -1,0 +1,7 @@
+# Logy z install/publish behov (Start-Transcript, per-service logy)
+*.log
+
+# Publish output / staging (ak by niekto omylom publishol sem)
+JurhanServiceNew/
+bin/
+obj/
