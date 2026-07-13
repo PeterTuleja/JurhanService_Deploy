@@ -19,6 +19,15 @@
     Konto, pod ktorym maju sluzby bezat. Ak nie je zadane, vypyta sa raz interaktivne
     a pouzije sa pre vsetky sluzby.
 
+.NOTES
+    PREREKVIZITA - Access Database Engine (x64):
+    Sluzby pristupuju k Omega .mdb databazam cez provider Microsoft.ACE.OLEDB.12.0
+    (net10 procesy su x64). Na cielovom stroji musi byt nainstalovany 64-bitovy
+    "Microsoft Access Database Engine 2016 Redistributable" - bez neho pristup k .mdb
+    padne az za behu chybou "provider is not registered on the local machine".
+    (Stary Net48 kod bezal x86 cez Jet 4.0, ktory bol sucastou Windows - preto to
+    predtym fungovalo bez instalacie.)
+
 .EXAMPLE
     .\Install-AllJurhanServices.ps1
 #>
