@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 REM ==========================================================================
 REM  Publish-AllJurhanServices.bat
 REM
-REM  Vypublikuje vsetkych 16 novych .NET 10 sluzieb do JEDNEHO priecinka
+REM  Vypublikuje vsetkych 17 novych .NET 10 sluzieb do JEDNEHO priecinka
 REM  (default C:\JurhanServiceNew) v strukture, ktoru ocakava
 REM  Install-AllJurhanServices.ps1  (exe: <Output>\JurhanService_X.exe).
 REM
@@ -42,7 +42,7 @@ shift
 goto parseargs
 :argsdone
 
-set "SERVICES=AktualizaciaBalikov AktualizaciaStatusov AktualizaciaZasob DuplicitneObjednavky ExportKurierov FakturyEmailom FakturyKaufland HodnoteniaEmailom ImportDobropisov ImportFaktur ImportObjednavok KontrolaUhrad KontrolaUhradFaktur MazanieDokladov RecenzieEmailom SparovaneKarty"
+set "SERVICES=AktualizaciaBalikov AktualizaciaStatusov AktualizaciaZasob DuplicitneObjednavky ExportKurierov FakturyEmailom FakturyKaufland HodnoteniaEmailom ImportDobropisov ImportFaktur ImportObjednavok KontrolaUhrad KontrolaUhradFaktur MazanieDokladov RecenzieEmailom RozuctovanieDopravcov SparovaneKarty"
 
 if defined DOCLEAN (
     if exist "%OUTPUT%" (

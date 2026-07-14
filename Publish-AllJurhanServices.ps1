@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Vypublikuje vsetkych 16 novych .NET 10 sluzieb do JEDNEHO priecinka (default C:\JurhanServiceNew).
+    Vypublikuje vsetkych 17 novych .NET 10 sluzieb do JEDNEHO priecinka (default C:\JurhanServiceNew).
     Vsetky exe (JurhanService_X.exe) aj zdielane DLL su v tom istom priecinku - zdielane kniznice
     (JurhanLib, DevExpress, Kros?) su tam len raz. Zhoduje sa s -RootPath v Install-AllJurhanServices.ps1
     (exe: <OutputRoot>\<JurhanService_X>.exe).
@@ -76,6 +76,7 @@ $ServiceProjects = @(
     'JurhanService_KontrolaUhradFaktur'
     'JurhanService_MazanieDokladov'
     'JurhanService_RecenzieEmailom'
+    'JurhanService_RozuctovanieDopravcov'
     'JurhanService_SparovaneKarty'
 )
 

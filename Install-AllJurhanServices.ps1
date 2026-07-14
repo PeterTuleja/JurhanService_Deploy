@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Zaregistruje vsetkych 16 novych .NET 10 sluzieb naraz pod jednym spolocnym kontom.
+    Zaregistruje vsetkych 17 novych .NET 10 sluzieb naraz pod jednym spolocnym kontom.
 
     SCM nazov sluzby ma prefix "JurhanServiceNew_" (napr. JurhanServiceNew_ImportFaktur),
     aby nove sluzby mohli KOEXISTOVAT so starymi povodnymi (net48, "JurhanService_") na
@@ -67,6 +67,7 @@ $ExeBaseNames = @(
     'JurhanService_KontrolaUhradFaktur'
     'JurhanService_MazanieDokladov'
     'JurhanService_RecenzieEmailom'
+    'JurhanService_RozuctovanieDopravcov'
     'JurhanService_SparovaneKarty'
 )
 
