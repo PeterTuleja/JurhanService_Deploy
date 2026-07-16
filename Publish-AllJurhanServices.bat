@@ -3,16 +3,18 @@ setlocal enabledelayedexpansion
 
 REM ==========================================================================
 REM  Logovanie: pri prvom spusteni presmeruj CELY vystup (vratane chyb buildu
-REM  z `dotnet publish`) do suboru a potom ho zopakuj na obrazovku. cmd nema
-REM  natívny `tee`, preto sa skript raz zavola sam so seba s presmerovanim.
+REM  z `dotnet publish`) sucasne na obrazovku aj do suboru. cmd nema
+REM  natívny `tee`, pouzijeme PowerShell Tee-Object.
 REM  Vysledny subor Publish_<datum>_<cas>.log staci podhodit na analyzu.
 REM ==========================================================================
 if not defined _JPUB_LOGGING (
     set "_JPUB_LOGGING=1"
     for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "TS=%%T"
     set "LOGFILE=%~dp0Publish_!TS!.log"
-    call "%~f0" %* > "!LOGFILE!" 2>&1
-    type "!LOGFILE!"
+    echo Log sa zapisuje do: !LOGFILE!
+    echo.
+    REM tee: vystup ide SUCASNE na obrazovku aj do suboru (cmd nema tee -> cez PowerShell)
+    "%~f0" %* 2>&1 | powershell -NoProfile -Command "$input | Tee-Object -FilePath '!LOGFILE!'"
     echo.
     echo ==========================================================================
     echo LOG ULOZENY DO SUBORU: !LOGFILE!
