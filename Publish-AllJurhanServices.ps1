@@ -56,6 +56,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Cely priebeh publikovania (vratane vystupu `dotnet publish` a chyb buildu) sa loguje do
+# suboru - netreba kopirovat text z okna, staci podhodit subor na analyzu.
+$logPath = Join-Path $PSScriptRoot ("Publish_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+try { Start-Transcript -Path $logPath -Force | Out-Null } catch { }
+
+try {
+
 # Zdroje sluzieb su o uroven vyssie (Deploy je podpriecinok JurhanService).
 $ServicesRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 
@@ -146,4 +153,14 @@ if ($failed) {
 }
 else {
     Write-Host "Dalej: spusti Install-AllJurhanServices.ps1 -RootPath '$OutputRoot' (ako spravca) na registraciu sluzieb." -ForegroundColor Green
+}
+
+}
+finally {
+    Write-Host ""
+    Write-Host "==================================================================" -ForegroundColor Yellow
+    Write-Host "LOG ULOZENY DO SUBORU: $logPath" -ForegroundColor Yellow
+    Write-Host "Tento subor podhod (netreba kopirovat text z okna)." -ForegroundColor Yellow
+    Write-Host "==================================================================" -ForegroundColor Yellow
+    try { Stop-Transcript | Out-Null } catch { }
 }

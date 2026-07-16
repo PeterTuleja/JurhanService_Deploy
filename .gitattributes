@@ -1,0 +1,4 @@
+# Batch subory MUSIA mat CRLF konce riadkov, inak ich cmd.exe spracuje nespravne
+# (zerie prve znaky riadkov, zlyha setlocal / delayed expansion).
+*.bat text eol=crlf
+*.cmd text eol=crlf

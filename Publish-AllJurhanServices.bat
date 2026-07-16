@@ -2,6 +2,27 @@
 setlocal enabledelayedexpansion
 
 REM ==========================================================================
+REM  Logovanie: pri prvom spusteni presmeruj CELY vystup (vratane chyb buildu
+REM  z `dotnet publish`) do suboru a potom ho zopakuj na obrazovku. cmd nema
+REM  natívny `tee`, preto sa skript raz zavola sam so seba s presmerovanim.
+REM  Vysledny subor Publish_<datum>_<cas>.log staci podhodit na analyzu.
+REM ==========================================================================
+if not defined _JPUB_LOGGING (
+    set "_JPUB_LOGGING=1"
+    for /f "usebackq delims=" %%T in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "TS=%%T"
+    set "LOGFILE=%~dp0Publish_!TS!.log"
+    call "%~f0" %* > "!LOGFILE!" 2>&1
+    type "!LOGFILE!"
+    echo.
+    echo ==========================================================================
+    echo LOG ULOZENY DO SUBORU: !LOGFILE!
+    echo Tento subor podhod ^(netreba kopirovat text z okna^).
+    echo ==========================================================================
+    endlocal
+    exit /b
+)
+
+REM ==========================================================================
 REM  Publish-AllJurhanServices.bat
 REM
 REM  Vypublikuje vsetkych 17 novych .NET 10 sluzieb do JEDNEHO priecinka
