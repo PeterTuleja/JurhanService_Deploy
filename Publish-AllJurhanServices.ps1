@@ -134,7 +134,12 @@ foreach ($proj in $ServiceProjects) {
 
     & dotnet @publishArgs
     $ok = ($LASTEXITCODE -eq 0)
-    if (-not $ok) { Write-Warning "publish ZLYHAL: $proj (kod $LASTEXITCODE)" }
+    if ($ok) {
+        Write-Host "    OK: $proj" -ForegroundColor Green
+    }
+    else {
+        Write-Host "    ZLYHALO: $proj (kod $LASTEXITCODE)" -ForegroundColor Red
+    }
 
     $errText = if ($ok) { $null } else { "exit $LASTEXITCODE" }
     $results.Add([pscustomobject]@{ Name = $proj; Ok = $ok; Output = $OutputRoot; Error = $errText })

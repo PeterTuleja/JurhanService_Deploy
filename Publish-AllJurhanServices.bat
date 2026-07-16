@@ -65,6 +65,15 @@ shift
 goto parseargs
 :argsdone
 
+REM --- ANSI farby (Windows 10/11 konzola) --------------------------------------
+REM ESC znak ziskame cez "prompt $E" trik; farebny vystup renderuje aj cez rúru
+REM do logu (Tee-Object). Do log suboru sa zapisu aj samotne ESC kody - neprekaza.
+for /f %%e in ('echo prompt $E ^| cmd') do set "ESC=%%e"
+set "C_GRN=!ESC![92m"
+set "C_RED=!ESC![91m"
+set "C_CYN=!ESC![96m"
+set "C_RST=!ESC![0m"
+
 set "SERVICES=AktualizaciaBalikov AktualizaciaStatusov AktualizaciaZasob DuplicitneObjednavky ExportKurierov FakturyEmailom FakturyKaufland HodnoteniaEmailom ImportDobropisov ImportFaktur ImportObjednavok KontrolaUhrad KontrolaUhradFaktur MazanieDokladov RecenzieEmailom RozuctovanieDopravcov SparovaneKarty"
 
 if defined DOCLEAN (
@@ -84,18 +93,19 @@ for %%S in (%SERVICES%) do (
     if not defined SKIP (
         set "CSPROJ=!SERVICESROOT!\%%S\JurhanService_%%S\JurhanService_%%S.csproj"
         echo.
-        echo ==^> Publikujem JurhanService_%%S  -^>  !OUTPUT!
+        echo !C_CYN!==^> Publikujem JurhanService_%%S  -^>  !OUTPUT!!C_RST!
         if not exist "!CSPROJ!" (
-            echo    CHYBA: csproj nenajdeny: !CSPROJ!
+            echo    !C_RED!CHYBA: csproj nenajdeny: !CSPROJ!!C_RST!
             set /a FAIL+=1
             set "FAILED=!FAILED! JurhanService_%%S"
         ) else (
             dotnet publish "!CSPROJ!" -c Release -r win-x64 --self-contained !SELFCONTAINED! -o "!OUTPUT!" -p:SatelliteResourceLanguages=sk
             if errorlevel 1 (
-                echo    publish ZLYHAL: JurhanService_%%S
+                echo    !C_RED!publish ZLYHAL: JurhanService_%%S!C_RST!
                 set /a FAIL+=1
                 set "FAILED=!FAILED! JurhanService_%%S"
             ) else (
+                echo    !C_GRN!OK: JurhanService_%%S!C_RST!
                 set /a OK+=1
             )
         )
@@ -121,16 +131,20 @@ if exist "%OUTPUT%" (
 
 echo.
 echo ==========================================================================
-echo Hotovo: !OK! vypublikovanych, !FAIL! zlyhalo  -^>  !OUTPUT!
+if !FAIL! gtr 0 (
+    echo Hotovo: !C_GRN!!OK! vypublikovanych!C_RST!, !C_RED!!FAIL! zlyhalo!C_RST!  -^>  !OUTPUT!
+) else (
+    echo Hotovo: !C_GRN!!OK! vypublikovanych!C_RST!, !FAIL! zlyhalo  -^>  !OUTPUT!
+)
 if /i "%SELFCONTAINED%"=="true" (
     echo Rezim: self-contained ^(runtime zbaleny, na serveri netreba .NET^)
 ) else (
     echo Rezim: framework-dependent ^(na serveri treba .NET 10 Desktop Runtime x64^)
 )
 if !FAIL! gtr 0 (
-    echo ZLYHALO:!FAILED!
+    echo !C_RED!ZLYHALO:!FAILED!!C_RST!
 ) else (
-    echo Dalej: na serveri spusti  Install-AllJurhanServices.ps1 -RootPath "!OUTPUT!"  ^(ako spravca^)
+    echo !C_GRN!Dalej: na serveri spusti  Install-AllJurhanServices.ps1 -RootPath "!OUTPUT!"  ^(ako spravca^)!C_RST!
 )
 echo ==========================================================================
 
