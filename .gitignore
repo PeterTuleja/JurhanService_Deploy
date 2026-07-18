@@ -5,3 +5,6 @@
 JurhanServiceNew/
 bin/
 obj/
+
+# Claude Code artefakty
+.claude/
