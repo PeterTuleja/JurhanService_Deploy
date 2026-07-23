@@ -34,6 +34,11 @@
 .PARAMETER Only
     Vypublikuje len sluzby, ktorych nazov obsahuje tento retazec (na testovanie jednej).
 
+.PARAMETER ShowWarnings
+    Ak je zadane, do logu ide plny vystup kompilatora vratane warningov. Bez neho sa loguju
+    len chyby + suhrnne pocty (warningy zdielanych kniznic - napr. ~1400 nullable warningov
+    OmegaLib pri jej rekompilacii - by inak zaplavili cely log).
+
 .EXAMPLE
     .\Publish-AllJurhanServices.ps1
 
@@ -51,7 +56,8 @@ param(
     [switch]$SelfContained,
     [string]$SatelliteLanguages = 'sk',
     [switch]$Clean,
-    [string]$Only
+    [string]$Only,
+    [switch]$ShowWarnings
 )
 
 $ErrorActionPreference = 'Stop'
@@ -130,6 +136,11 @@ foreach ($proj in $ServiceProjects) {
     )
     if ($SatelliteLanguages -and $SatelliteLanguages -ne 'all') {
         $publishArgs += "-p:SatelliteResourceLanguages=$SatelliteLanguages"
+    }
+    if (-not $ShowWarnings) {
+        # Do logu len chyby + suhrn (pocty warningov/chyb). Warningy sa zobrazuju len pri
+        # rekompilacii kniznice, takze ich pocet v logu kolise a masku ju skutocne chyby.
+        $publishArgs += '-clp:ErrorsOnly;Summary'
     }
 
     & dotnet @publishArgs
