@@ -34,8 +34,12 @@ REM
 REM  .pdb sa ponechavaju (cisla riadkov v stack trace v .err logoch).
 REM  Jazyky DevExpress orezane na sk. Runtime: win-x64.
 REM
+REM  Do logu idu len chyby + suhrn (pocty warningov/chyb) - warningy zdielanych kniznic
+REM  (napr. ~1400 nullable warningov OmegaLib pri jej rekompilacii) by inak zaplavili
+REM  cely log. Plny vypis kompilatora: parameter `showwarnings`.
+REM
 REM  Pouzitie:
-REM    Publish-AllJurhanServices.bat [vystup] [clean] [selfcontained] [only:nazov]
+REM    Publish-AllJurhanServices.bat [vystup] [clean] [selfcontained] [only:nazov] [showwarnings]
 REM
 REM  Priklady:
 REM    Publish-AllJurhanServices.bat
@@ -43,12 +47,14 @@ REM    Publish-AllJurhanServices.bat clean
 REM    Publish-AllJurhanServices.bat D:\Deploy clean
 REM    Publish-AllJurhanServices.bat clean selfcontained
 REM    Publish-AllJurhanServices.bat only:ImportObjednavok
+REM    Publish-AllJurhanServices.bat showwarnings
 REM ==========================================================================
 
 set "OUTPUT=C:\JurhanServiceNew"
 set "DOCLEAN="
 set "SELFCONTAINED=false"
 set "FILTER="
+set "CLPARGS=-clp:ErrorsOnly;Summary"
 
 REM Koren so zdrojmi sluzieb (Deploy je podpriecinok JurhanService) zachyt PRED parseargs -
 REM shift v loope posuva aj %0, takze %~dp0 by po loope uz neukazoval na tento bat.
@@ -59,6 +65,7 @@ if "%~1"=="" goto argsdone
 set "A=%~1"
 if /i "!A!"=="clean" ( set "DOCLEAN=1" & shift & goto parseargs )
 if /i "!A!"=="selfcontained" ( set "SELFCONTAINED=true" & shift & goto parseargs )
+if /i "!A!"=="showwarnings" ( set "CLPARGS=" & shift & goto parseargs )
 if /i "!A:~0,5!"=="only:" ( set "FILTER=!A:~5!" & shift & goto parseargs )
 set "OUTPUT=!A!"
 shift
@@ -99,7 +106,7 @@ for %%S in (%SERVICES%) do (
             set /a FAIL+=1
             set "FAILED=!FAILED! JurhanService_%%S"
         ) else (
-            dotnet publish "!CSPROJ!" -c Release -r win-x64 --self-contained !SELFCONTAINED! -o "!OUTPUT!" -p:SatelliteResourceLanguages=sk
+            dotnet publish "!CSPROJ!" -c Release -r win-x64 --self-contained !SELFCONTAINED! -o "!OUTPUT!" -p:SatelliteResourceLanguages=sk !CLPARGS!
             if errorlevel 1 (
                 echo    !C_RED!publish ZLYHAL: JurhanService_%%S!C_RST!
                 set /a FAIL+=1
