@@ -101,6 +101,29 @@ if ($Only) {
 $selfContainedFlag = if ($SelfContained) { 'true' } else { 'false' }
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
+# --- Predkompilacia zdielanych kniznic ----------------------------------------
+# JurhanModels a JurhanLib pouzivaju vsetky sluzby - skompiluju sa najprv samostatne,
+# aby sa pripadna chyba v zdielanej kniznici odhalila hned na zaciatku (a len raz),
+# nie az uprostred publishu niektorej sluzby. Poradie: Models pred Lib (Lib na ne
+# odkazuje). Pri chybe sa cely publish zastavi.
+$SharedLibProjects = @(
+    'C:\Projekty\Private\JurhanProgramy\JurhanModels\JurhanModels\JurhanModels.csproj'
+    'C:\Projekty\Private\JurhanProgramy\JurhanLib\JurhanLib\JurhanLib.csproj'
+)
+foreach ($lib in $SharedLibProjects) {
+    $libName = [System.IO.Path]::GetFileNameWithoutExtension($lib)
+    if (-not (Test-Path -LiteralPath $lib)) { throw "Zdielana kniznica nenajdena: $lib" }
+    Write-Host ""
+    Write-Host "==> Kompilujem zdielanu kniznicu $libName" -ForegroundColor Cyan
+    $buildArgs = @('build', $lib, '-c', $Configuration)
+    if (-not $ShowWarnings) { $buildArgs += '-clp:ErrorsOnly;Summary' }
+    & dotnet @buildArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Kompilacia zdielanej kniznice $libName zlyhala (kod $LASTEXITCODE) - sluzby sa nepublikuju."
+    }
+    Write-Host "    OK: $libName" -ForegroundColor Green
+}
+
 # Vsetky sluzby idu do JEDNEHO priecinka ($OutputRoot). Zdielane DLL (JurhanLib, OmegaLib,
 # DevExpress, Kros?) su tam ulozene raz; kazda sluzba ma vlastny <Name>.exe + <Name>.deps.json
 # + <Name>.runtimeconfig.json, ktore sa nekonfliktuju. Zdielane DLL sa prepisu rovnakou verziou.
