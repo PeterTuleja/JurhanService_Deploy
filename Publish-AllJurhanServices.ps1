@@ -5,6 +5,11 @@
     (JurhanLib, DevExpress, Kros?) su tam len raz. Zhoduje sa s -RootPath v Install-AllJurhanServices.ps1
     (exe: <OutputRoot>\<JurhanService_X>.exe).
 
+    Spolu so sluzbami sa do rovnakeho priecinka publikuje aj JurhanServiceRun.exe -
+    WinForms spustac na manualne spustenie jednotlivych spracovani. Nie je to sluzba
+    (Install-AllJurhanServices.ps1 ju neregistruje), len vyuziva uz nakopirovane
+    zdielane DLL v tom istom priecinku.
+
     Framework-dependent (default): na serveri treba nainstalovat .NET 10 Desktop Runtime (x64).
     Self-contained (-SelfContained): runtime sa zbali do outputu, na serveri netreba nic
     (okrem Microsoft Access Database Engine 2016 x64 pre ACE.OLEDB.12.0).
@@ -32,7 +37,8 @@
     'all' = ponechat vsetky.
 
 .PARAMETER Only
-    Vypublikuje len sluzby, ktorych nazov obsahuje tento retazec (na testovanie jednej).
+    Vypublikuje len projekty, ktorych nazov obsahuje tento retazec (na testovanie jedneho).
+    Filtruje aj spustac - napr. -Only JurhanServiceRun vypublikuje len jeho.
 
 .PARAMETER ShowWarnings
     Ak je zadane, do logu ide plny vystup kompilatora vratane warningov. Bez neho sa loguju
@@ -93,9 +99,15 @@ $ServiceProjects = @(
     'JurhanService_SparovaneKarty'
 )
 
+# JurhanServiceRun - GUI spustac spracovani. Nie je to sluzba (nepatri do $ExeBaseNames
+# v Install-AllJurhanServices.ps1), publikuje sa ale do rovnakeho priecinka ako sluzby.
+$RunnerProject  = 'JurhanServiceRun'
+$publishRunner  = $true
+
 if ($Only) {
-    $ServiceProjects = $ServiceProjects | Where-Object { $_ -like "*$Only*" }
-    if (-not $ServiceProjects) { throw "Ziadna sluzba nezodpoveda -Only '$Only'." }
+    $ServiceProjects = @($ServiceProjects | Where-Object { $_ -like "*$Only*" })
+    $publishRunner   = $RunnerProject -like "*$Only*"
+    if (-not $ServiceProjects -and -not $publishRunner) { throw "Ziadny projekt nezodpoveda -Only '$Only'." }
 }
 
 $selfContainedFlag = if ($SelfContained) { 'true' } else { 'false' }
@@ -179,10 +191,52 @@ foreach ($proj in $ServiceProjects) {
     $results.Add([pscustomobject]@{ Name = $proj; Ok = $ok; Output = $OutputRoot; Error = $errText })
 }
 
+# --- Spustac JurhanServiceRun -------------------------------------------------
+# JurhanServiceRun je WinForms program na manualne spustenie jednotlivych spracovani.
+# Nie je to sluzba (Install-AllJurhanServices.ps1 ju neregistruje), ale publikuje sa
+# do toho isteho priecinka ($OutputRoot) - vyuzije uz nakopirovane zdielane DLL
+# (JurhanLib, OmegaLib, DevExpress, Kros...) a je po ruke priamo pri sluzbach.
+if ($publishRunner) {
+    $runnerCsproj = Join-Path $ServicesRoot 'JurhanServiceRun\JurhanServiceRun\JurhanServiceRun.csproj'
+
+    Write-Host ""
+    Write-Host "==> Publikujem spustac $RunnerProject -> $OutputRoot" -ForegroundColor Cyan
+
+    if (-not (Test-Path -LiteralPath $runnerCsproj)) {
+        Write-Host "    CHYBA: csproj nenajdeny: $runnerCsproj" -ForegroundColor Red
+        $results.Add([pscustomobject]@{ Name = $RunnerProject; Ok = $false; Output = $null; Error = 'csproj nenajdeny' })
+    }
+    else {
+        $publishArgs = @(
+            'publish', $runnerCsproj,
+            '-c', $Configuration,
+            '-r', $Runtime,
+            '--self-contained', $selfContainedFlag,
+            '-o', $OutputRoot
+        )
+        if ($SatelliteLanguages -and $SatelliteLanguages -ne 'all') {
+            $publishArgs += "-p:SatelliteResourceLanguages=$SatelliteLanguages"
+        }
+        if (-not $ShowWarnings) { $publishArgs += '-clp:ErrorsOnly;Summary' }
+
+        & dotnet @publishArgs
+        $ok = ($LASTEXITCODE -eq 0)
+        if ($ok) {
+            Write-Host "    OK: $RunnerProject" -ForegroundColor Green
+        }
+        else {
+            Write-Host "    ZLYHALO: $RunnerProject (kod $LASTEXITCODE)" -ForegroundColor Red
+        }
+
+        $errText = if ($ok) { $null } else { "exit $LASTEXITCODE" }
+        $results.Add([pscustomobject]@{ Name = $RunnerProject; Ok = $ok; Output = $OutputRoot; Error = $errText })
+    }
+}
+
 $sw.Stop()
 $okCount = ($results | Where-Object Ok).Count
 Write-Host ""
-Write-Host "Hotovo: $okCount/$($results.Count) sluzieb vypublikovanych za $([int]$sw.Elapsed.TotalSeconds)s do $OutputRoot." -ForegroundColor Cyan
+Write-Host "Hotovo: $okCount/$($results.Count) projektov (sluzby + spustac) vypublikovanych za $([int]$sw.Elapsed.TotalSeconds)s do $OutputRoot." -ForegroundColor Cyan
 $mode = if ($SelfContained) { 'self-contained (runtime zbaleny)' } else { 'framework-dependent (treba .NET 10 Desktop Runtime x64 na serveri)' }
 Write-Host "Rezim: $mode"
 $failed = $results | Where-Object { -not $_.Ok }

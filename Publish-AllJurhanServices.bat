@@ -31,6 +31,11 @@ REM  Vypublikuje vsetkych 17 novych .NET 10 sluzieb do JEDNEHO priecinka
 REM  (default C:\JurhanServiceNew) v strukture, ktoru ocakava
 REM  Install-AllJurhanServices.ps1  (exe: <Output>\JurhanService_X.exe).
 REM
+REM  Spolu so sluzbami sa do rovnakeho priecinka publikuje aj JurhanServiceRun.exe -
+REM  WinForms spustac na manualne spustenie spracovani. Nie je to sluzba
+REM  (Install-AllJurhanServices.ps1 ju neregistruje), len vyuziva uz nakopirovane
+REM  zdielane DLL v tom istom priecinku.
+REM
 REM  .pdb sa ponechavaju (cisla riadkov v stack trace v .err logoch).
 REM  Jazyky DevExpress orezane na sk. Runtime: win-x64.
 REM
@@ -47,6 +52,7 @@ REM    Publish-AllJurhanServices.bat clean
 REM    Publish-AllJurhanServices.bat D:\Deploy clean
 REM    Publish-AllJurhanServices.bat clean selfcontained
 REM    Publish-AllJurhanServices.bat only:ImportObjednavok
+REM    Publish-AllJurhanServices.bat only:JurhanServiceRun
 REM    Publish-AllJurhanServices.bat showwarnings
 REM ==========================================================================
 
@@ -115,6 +121,35 @@ for %%S in (%SERVICES%) do (
                 echo    !C_GRN!OK: JurhanService_%%S!C_RST!
                 set /a OK+=1
             )
+        )
+    )
+)
+
+REM --- Spustac JurhanServiceRun ------------------------------------------------
+REM  JurhanServiceRun je WinForms program na manualne spustenie jednotlivych
+REM  spracovani. Nie je to sluzba (Install-AllJurhanServices.ps1 ju neregistruje),
+REM  ale publikuje sa do toho isteho priecinka - vyuzije uz nakopirovane zdielane
+REM  DLL (JurhanLib, OmegaLib, DevExpress, Kros...) a je po ruke pri sluzbach.
+REM  Pri only:<nazov> sa publikuje len ak filtru zodpoveda.
+set "SKIP="
+if defined FILTER ( echo JurhanServiceRun| find /i "!FILTER!" >nul || set "SKIP=1" )
+if not defined SKIP (
+    set "CSPROJ=!SERVICESROOT!\JurhanServiceRun\JurhanServiceRun\JurhanServiceRun.csproj"
+    echo.
+    echo !C_CYN!==^> Publikujem spustac JurhanServiceRun  -^>  !OUTPUT!!C_RST!
+    if not exist "!CSPROJ!" (
+        echo    !C_RED!CHYBA: csproj nenajdeny: !CSPROJ!!C_RST!
+        set /a FAIL+=1
+        set "FAILED=!FAILED! JurhanServiceRun"
+    ) else (
+        dotnet publish "!CSPROJ!" -c Release -r win-x64 --self-contained !SELFCONTAINED! -o "!OUTPUT!" -p:SatelliteResourceLanguages=sk !CLPARGS!
+        if errorlevel 1 (
+            echo    !C_RED!publish ZLYHAL: JurhanServiceRun!C_RST!
+            set /a FAIL+=1
+            set "FAILED=!FAILED! JurhanServiceRun"
+        ) else (
+            echo    !C_GRN!OK: JurhanServiceRun!C_RST!
+            set /a OK+=1
         )
     )
 )
