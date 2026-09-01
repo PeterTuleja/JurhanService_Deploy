@@ -40,6 +40,20 @@
     Vypublikuje len projekty, ktorych nazov obsahuje tento retazec (na testovanie jedneho).
     Filtruje aj spustac - napr. -Only JurhanServiceRun vypublikuje len jeho.
 
+.PARAMETER SkipTests
+    Preskoci spustenie unit testov. Bez neho sa testy spustaju vzdy a prvy padnuty
+    test zastavi cely publish (do $OutputRoot sa nic nenakopiruje). Pouzivaj len
+    vynimocne - napr. hotfix, ked je test rozbity z ineho dovodu nez chyba
+    v nasadzovanom kode.
+
+.PARAMETER ZipRoot
+    Priecinok, do ktoreho sa na konci zabali vypublikovany output (default
+    C:\JurhanDeploy). Nazov archivu sa odvodi z nazvu vystupneho priecinka:
+    C:\JurhanServiceNew -> C:\JurhanDeploy\JurhanServiceNew.zip.
+
+.PARAMETER SkipZip
+    Preskoci zabalenie outputu do zip. Publish aj upratanie outputu prebehnu.
+
 .PARAMETER ShowWarnings
     Ak je zadane, do logu ide plny vystup kompilatora vratane warningov. Bez neho sa loguju
     len chyby + suhrnne pocty (warningy zdielanych kniznic - napr. ~1400 nullable warningov
@@ -63,7 +77,10 @@ param(
     [string]$SatelliteLanguages = 'sk',
     [switch]$Clean,
     [string]$Only,
-    [switch]$ShowWarnings
+    [switch]$ShowWarnings,
+    [switch]$SkipTests,
+    [string]$ZipRoot = 'C:\JurhanDeploy',
+    [switch]$SkipZip
 )
 
 $ErrorActionPreference = 'Stop'
@@ -136,6 +153,55 @@ foreach ($lib in $SharedLibProjects) {
     Write-Host "    OK: $libName" -ForegroundColor Green
 }
 
+# --- Unit testy ---------------------------------------------------------------
+# Testy bezia PRED publikovanim a PRED -Clean: ked test padne, $OutputRoot ostane
+# nedotknuty a nic sa don nenakopiruje.
+# Hlada sa v zdrojoch sluzieb A v adresaroch zdielanych kniznic - sluzby na JurhanLib
+# a JurhanModels stoja, takze ich testy musia zbehnut aj tu. Cesty sa odvodzuju
+# z $SharedLibProjects, aby nevznikol druhy zoznam ciest, ktory by sa rozisiel s prvym.
+# -Only testy NEfiltruje: beh testov je zlomok sekundy, draha je kompilacia, a
+# zdielana JurhanLib zasahuje do vsetkych sluzieb.
+$testsRun = 0
+if ($SkipTests) {
+    Write-Host ""
+    Write-Host "Unit testy PRESKOCENE (-SkipTests)." -ForegroundColor DarkYellow
+}
+else {
+    # Koren repozitara zdielanej kniznice: ...\JurhanLib\JurhanLib\JurhanLib.csproj -> ...\JurhanLib
+    $sharedLibRoots  = @($SharedLibProjects | ForEach-Object { Split-Path -Parent (Split-Path -Parent $_) })
+    $testSearchRoots = @(@($ServicesRoot) + $sharedLibRoots | Select-Object -Unique)
+
+    $testProjects = @(Get-ChildItem -Path $testSearchRoots -Recurse -Filter '*.Tests.csproj' -File -ErrorAction SilentlyContinue |
+                      Where-Object { $_.FullName -notmatch '[\\/](obj|bin|\.claude)[\\/]' } |
+                      Sort-Object FullName -Unique |
+                      Sort-Object Name)
+
+    if (-not $testProjects) {
+        Write-Host ""
+        Write-Host "Nenasiel sa ziadny *.Tests.csproj - testy sa nespustaju." -ForegroundColor DarkYellow
+    }
+    else {
+        Write-Host ""
+        Write-Host "Spustam unit testy ($($testProjects.Count) projektov):" -ForegroundColor Cyan
+        foreach ($testProject in $testProjects) {
+            Write-Host ""
+            Write-Host "==> Testy $($testProject.BaseName)" -ForegroundColor Cyan
+
+            $testArgs = @('test', $testProject.FullName, '-c', $Configuration, '--nologo')
+            # Vysledok testov ide z VSTest, nie z MSBuild loggera - riadok "Passed! - Failed: 0..."
+            # sa zobrazi aj s ErrorsOnly. Potlacia sa len warningy kompilacie.
+            if (-not $ShowWarnings) { $testArgs += '-clp:ErrorsOnly;Summary' }
+
+            & dotnet @testArgs
+            if ($LASTEXITCODE -ne 0) {
+                throw "Testy $($testProject.BaseName) zlyhali (kod $LASTEXITCODE) - sluzby sa nepublikuju."
+            }
+            Write-Host "    OK: $($testProject.BaseName)" -ForegroundColor Green
+        }
+        $testsRun = $testProjects.Count
+    }
+}
+
 # Vsetky sluzby idu do JEDNEHO priecinka ($OutputRoot). Zdielane DLL (JurhanLib, OmegaLib,
 # DevExpress, Kros?) su tam ulozene raz; kazda sluzba ma vlastny <Name>.exe + <Name>.deps.json
 # + <Name>.runtimeconfig.json, ktore sa nekonfliktuju. Zdielane DLL sa prepisu rovnakou verziou.
@@ -148,9 +214,13 @@ if ($Clean -and (Test-Path -LiteralPath $OutputRoot)) {
 $results = [System.Collections.Generic.List[object]]::new()
 
 foreach ($proj in $ServiceProjects) {
-    # Najdi .csproj (mimo obj/bin), aby sme neboli zavisli na presnom vnoreni priecinkov.
+    # Najdi .csproj (mimo obj/bin/.claude), aby sme neboli zavisli na presnom vnoreni priecinkov.
+    # .claude MUSI byt vylucene: v .claude\worktrees\ ostavaju kopie projektu po starych
+    # sessionach a Select-Object -First 1 by siahol po nich (radia sa pred realny priecinok).
+    # V takej kopii nerezoluju relativne ProjectReference cesty - publish spadne na
+    # "type or namespace JurhanLib could not be found", hoci zdroje su v poriadku.
     $csproj = Get-ChildItem -Path $ServicesRoot -Recurse -Filter "$proj.csproj" -File -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -notmatch '[\\/](obj|bin)[\\/]' } |
+              Where-Object { $_.FullName -notmatch '[\\/](obj|bin|\.claude)[\\/]' } |
               Select-Object -First 1
 
     if (-not $csproj) {
@@ -234,11 +304,78 @@ if ($publishRunner) {
 }
 
 $sw.Stop()
-$okCount = ($results | Where-Object Ok).Count
+# --- Uprac zbytocne subory z outputu ------------------------------------------
+# XML dokumentacia referencii (~24 MB, hlavne DevExpress) sa za behu nikdy nenacita -
+# je len pre IntelliSense. Lokalizacne podpriecinky (de/es/ja/...) netreba, sluzby
+# bezia v sk (nechavame len 'sk' a 'runtimes'). .pdb sa NEmazu - drzia cisla riadkov
+# v stack trace v .err logoch sluzieb.
+# Bolo to v .bat wrapperi; presunute sem, aby sa upratalo aj pri priamom spusteni
+# tohto skriptu a hlavne aby zip nizsie nezabalil to, co sa ma zahodit.
+if (Test-Path -LiteralPath $OutputRoot) {
+    Write-Host ""
+    Write-Host "Cistim zbytocne subory z outputu (XML dokumentacia + cudzie lokalizacie) ..." -ForegroundColor DarkYellow
+    Get-ChildItem -LiteralPath $OutputRoot -Filter '*.xml' -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue
+    Get-ChildItem -LiteralPath $OutputRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin @('sk', 'runtimes') } |
+        ForEach-Object {
+            Write-Host "   - odstranujem lokalizaciu: $($_.Name)"
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+}
+
+# --- Zabalenie outputu do zip -------------------------------------------------
+# Bali sa AZ PO upratani, aby v archive nebolo to, co sa vyssie zmazalo.
+# Archiv obsahuje aj korenovy priecinok (JurhanServiceNew\...), takze rozbalenim
+# na serveri do C:\ vznikne presne cesta, ktoru ocakava Install-AllJurhanServices.ps1.
+# Ked publish neprebehol cely, NEbali sa: polovicny balik vyzera zvonku ako hotovy.
+$zipPath = $null
+$zipInfo = 'nezabalene'
+if ($SkipZip) {
+    $zipInfo = 'PRESKOCENE (-SkipZip)'
+}
+elseif (@($results | Where-Object { -not $_.Ok }).Count -gt 0) {
+    $zipInfo = 'preskocene - publish neprebehol cely'
+}
+elseif (-not (Test-Path -LiteralPath $OutputRoot)) {
+    $zipInfo = "preskocene - $OutputRoot neexistuje"
+}
+else {
+    $zipPath = Join-Path $ZipRoot ((Split-Path -Leaf $OutputRoot) + '.zip')
+    Write-Host ""
+    Write-Host "Balim $OutputRoot -> $zipPath ..." -ForegroundColor Cyan
+
+    if (-not (Test-Path -LiteralPath $ZipRoot)) {
+        New-Item -ItemType Directory -Path $ZipRoot -Force | Out-Null
+    }
+    # CreateFromDirectory na uz existujuci subor spadne, stary archiv sa preto zmaze
+    if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
+
+    # Compress-Archive je na priecinok tejto velkosti (stovky MB, tisice suborov)
+    # radovo pomalsi, preto ZipFile priamo z .NET
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $OutputRoot, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $true)
+
+    $zipInfo = "$zipPath ($([math]::Round((Get-Item -LiteralPath $zipPath).Length / 1MB, 1)) MB)"
+    Write-Host "    OK: $zipInfo" -ForegroundColor Green
+}
+
+# @() je nutne: .bat wrapper spusta tento skript cez Windows PowerShell 5.1 a tam
+# .Count nad JEDNYM pscustomobject vrati prazdno (v PowerShelli 7 vrati 1). Pri
+# publikovani jedinej sluzby (-Only) sa to prejavilo ako "Hotovo: /1 projektov".
+$okCount = @($results | Where-Object Ok).Count
 Write-Host ""
 Write-Host "Hotovo: $okCount/$($results.Count) projektov (sluzby + spustac) vypublikovanych za $([int]$sw.Elapsed.TotalSeconds)s do $OutputRoot." -ForegroundColor Cyan
+if ($SkipTests) {
+    Write-Host "Unit testy: PRESKOCENE (-SkipTests)." -ForegroundColor DarkYellow
+}
+else {
+    Write-Host "Unit testy: $testsRun projektov preslo."
+}
 $mode = if ($SelfContained) { 'self-contained (runtime zbaleny)' } else { 'framework-dependent (treba .NET 10 Desktop Runtime x64 na serveri)' }
 Write-Host "Rezim: $mode"
+Write-Host "Zip: $zipInfo"
 $failed = $results | Where-Object { -not $_.Ok }
 if ($failed) {
     Write-Host "ZLYHALO:" -ForegroundColor Red
