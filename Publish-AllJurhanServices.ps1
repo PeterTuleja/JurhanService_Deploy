@@ -316,8 +316,16 @@ if (Test-Path -LiteralPath $OutputRoot) {
     Write-Host "Cistim zbytocne subory z outputu (XML dokumentacia + cudzie lokalizacie) ..." -ForegroundColor DarkYellow
     Get-ChildItem -LiteralPath $OutputRoot -Filter '*.xml' -File -ErrorAction SilentlyContinue |
         Remove-Item -Force -ErrorAction SilentlyContinue
+    # Mazu sa LEN jazykove podpriecinky (kod jazyka, pripadne s regionom: de, es, zh-Hans, ...).
+    # Povodne to mazalo KAZDY podpriecinok okrem 'sk' a 'runtimes' - a sluzby si priamo
+    # v $OutputRoot vytvaraju pracovne adresare Log\ (tam su *User.xml, *Developer.xml, .log,
+    # .html) a Faktury\ (vygenerovane pdf). Publish do beziaceho adresara tak zmazal celu
+    # historiu logov vratane XML, ktore sa nepodarilo odoslat e-mailom (ServicesLogger ich
+    # zamerne nemaze, aby ich poslal v dalsom okne) aj vygenerovane pdf faktury.
+    # Vedlajsi efekt: MazanieDokladov potom v sobotu hlasilo "Adresar ... neexistuje" ako chybu.
+    $ZachovaneAdresare = @('sk', 'runtimes', 'Log', 'Faktury', 'Stav')
     Get-ChildItem -LiteralPath $OutputRoot -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notin @('sk', 'runtimes') } |
+        Where-Object { $_.Name -notin $ZachovaneAdresare -and $_.Name -match '^[a-z]{2,3}(-[A-Za-z]{2,8})*$' } |
         ForEach-Object {
             Write-Host "   - odstranujem lokalizaciu: $($_.Name)"
             Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue

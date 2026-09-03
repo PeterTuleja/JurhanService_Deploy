@@ -33,6 +33,12 @@
     (na rozdiel od povodneho ProjectInstallerBase, ktory mal heslo natvrdo v skompilovanom
     kode v JurhanModels.Constants.JurhanServerUserTulejaPassword).
 
+.PARAMETER NoStart
+    Sluzba sa po instalacii len zaregistruje, nespusti sa. Bez tohto prepinaca skript
+    sluzbu aj spusti - "start= auto" totiz znamena len to, ze SCM ju spusti pri nabehu
+    systemu, nie teraz, takze po cistej instalacii boli vsetky sluzby zastavene az
+    do restartu servera.
+
 .PARAMETER DisplayName
     Zobrazovany nazov v services.msc. Default = Name.
 
@@ -65,7 +71,10 @@ param(
     [string]$Description = $Name,
 
     [ValidateSet('auto', 'demand', 'disabled')]
-    [string]$StartupType = 'auto'
+    [string]$StartupType = 'auto',
+
+    # Ak je zadane, sluzba sa po instalacii NESPUSTI (len zaregistruje).
+    [switch]$NoStart
 )
 
 $ErrorActionPreference = 'Stop'
@@ -145,13 +154,33 @@ if ($existing) {
         Stop-Service -Name $Name -Force -ErrorAction SilentlyContinue
     }
     & sc.exe delete $Name | Out-Null
-    Start-Sleep -Seconds 1
+    # Cakanie, kym SCM sluzbu naozaj odstrani. Fixna 1 s nestacila - kym drzi handle
+    # napr. otvorene services.msc, sluzba zostava "marked for deletion" a nasledne
+    # sc.exe create zlyha s 1072.
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Get-Service -Name $Name -ErrorAction SilentlyContinue)) { break }
+        Start-Sleep -Milliseconds 500
+    }
+    if (Get-Service -Name $Name -ErrorAction SilentlyContinue) {
+        throw "Sluzba '$Name' je stale oznacena na zmazanie (marked for deletion). Zatvor services.msc a spusti znova."
+    }
 }
 
-# sc.exe vyzaduje presne tento format ("kluc= hodnota", medzera za "="), inak zlyha bez zjavnej priciny.
+# Mapovanie sc.exe hodnot na StartupType pre New-Service.
+$startupTypeNet = switch ($StartupType) {
+    'auto'     { 'Automatic' }
+    'demand'   { 'Manual' }
+    'disabled' { 'Disabled' }
+}
+
 if ($LocalSystem) {
     $account = 'LocalSystem'
+    # sc.exe vyzaduje presne tento format ("kluc= hodnota", medzera za "="), inak zlyha bez zjavnej priciny.
     & sc.exe create $Name binPath= "`"$ExePath`"" start= $StartupType obj= "LocalSystem" DisplayName= "$DisplayName"
+    if ($LASTEXITCODE -ne 0) {
+        throw "sc.exe create zlyhalo s kodom $LASTEXITCODE"
+    }
 }
 else {
     $account = $Credential.UserName
@@ -164,19 +193,51 @@ else {
     catch {
         Write-Warning "Konto '$account' sa nepodarilo normalizovat na DOMENA\user - pouzivam ako je zadane."
     }
-    $plainPassword = $Credential.GetNetworkCredential().Password
     Grant-ServiceLogonRight -Account $account
+
+    # New-Service -Credential namiesto "sc.exe create ... password= <heslo>": heslo sa uz
+    # nedostane na prikazovy riadok, takze ho neuvidi ani Win32_Process.CommandLine, ani
+    # Start-Transcript log z Install-AllJurhanServices.ps1. Dokumentacia v hlavicke skriptu
+    # to tvrdila uz predtym, implementacia to nerobila.
+    $normalizedCredential = New-Object System.Management.Automation.PSCredential(
+        $account, $Credential.Password)
+
     Write-Host "Vytvaram sluzbu '$Name' pod kontom '$account' ..."
-    & sc.exe create $Name binPath= "`"$ExePath`"" start= $StartupType obj= "$account" password= "$plainPassword" DisplayName= "$DisplayName"
-}
-if ($LASTEXITCODE -ne 0) {
-    if ($LASTEXITCODE -eq 1057) {
-        throw "sc.exe create zlyhalo (1057): neplatne konto alebo HESLO. Konto '$account' existuje, takze najpravdepodobnejsie je zle HESLO. Skontroluj heslo a spusti znova."
+    try {
+        New-Service -Name $Name -BinaryPathName "`"$ExePath`"" -DisplayName $DisplayName `
+            -Description $Description -StartupType $startupTypeNet -Credential $normalizedCredential | Out-Null
     }
-    throw "sc.exe create zlyhalo s kodom $LASTEXITCODE"
+    catch {
+        $sprava = $_.Exception.Message
+        if ($sprava -match '1057' -or $sprava -match 'account name is invalid') {
+            throw "Vytvorenie sluzby zlyhalo (1057): neplatne konto alebo HESLO. Konto '$account' existuje, takze najpravdepodobnejsie je zle HESLO. Skontroluj heslo a spusti znova."
+        }
+        throw "Vytvorenie sluzby '$Name' zlyhalo: $sprava"
+    }
 }
 
 & sc.exe description $Name "$Description" | Out-Null
 
 Write-Host "Sluzba '$Name' bola zaregistrovana (exe: $ExePath, konto: $account, start: $StartupType)." -ForegroundColor Green
-Write-Host "Spustenie: Start-Service -Name '$Name'"
+
+# Po instalacii sluzbu aj spustit. Bez toho boli po cistej instalacii vsetky sluzby
+# zaregistrovane ale ZASTAVENE az do restartu servera - "start= auto" znamena len to,
+# ze SCM ju spusti pri nabehu systemu, nie teraz.
+if ($NoStart) {
+    Write-Host "Sluzba nebola spustena (-NoStart). Spustenie: Start-Service -Name '$Name'"
+}
+elseif ($StartupType -eq 'disabled') {
+    Write-Host "Sluzba je disabled, nespustam ju."
+}
+else {
+    Write-Host "Spustam sluzbu '$Name' ..."
+    try {
+        Start-Service -Name $Name
+        $sluzba = Get-Service -Name $Name
+        Write-Host "Sluzba '$Name' je v stave '$($sluzba.Status)'." -ForegroundColor Green
+    }
+    catch {
+        Write-Warning "Sluzbu '$Name' sa nepodarilo spustit: $($_.Exception.Message)"
+        Write-Warning "Sluzba je zaregistrovana - skus rucne: Start-Service -Name '$Name' a pozri jej .err/.log subor."
+    }
+}
